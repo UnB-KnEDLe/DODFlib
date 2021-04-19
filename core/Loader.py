@@ -4,8 +4,19 @@ import pandas as pd
 import numpy as np
 import attr
 from pathlib import Path
-from typing import Iterable
+from typing import Dict, Iterable, List, Union 
 
+from knedle_nlp.core import utils
+from knedle_nlp.core.utils import _type_checking
+
+Iter = Iterable
+Path_T = Union[str, Path]
+Pattern_T = Union[str, re.Pattern]
+
+
+ITER = Iterable
+PATH_T = Path_T.__dict__['__args__']
+PATTERN_T = Pattern_T.__dict__['__args__']
 
 
 def gen_all_files(root, pat=r'.*[.]py$'):
@@ -34,7 +45,7 @@ def base_assembler(seq: Iterable[pd.DataFrame]):
         pd.DataFrame: a big DataFrame having all the data
     """
     return pd.concat(seq) 
-            
+
 
 
 @attr.s
@@ -82,6 +93,51 @@ class Loader:
 
     def load(self, root_or_data=None):
         return self.transform(root_or_data)
+
+
 class LoaderXML:
-    def __init__(self):
-        pass
+    """Class aiming to facilitate extraction of XML annotated data.
+
+    """
+
+    @classmethod
+    def load(cls, path: Union[Path_T, Iterable[Path_T]]):
+        """Main class method to extract annotations from XML files.
+
+        Args:
+            path (Union[Path_T, Iterable[Path_T]]): path to one or more XML files
+
+        Returns:
+            Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having 
+                annotations attributes and values
+        """
+        if isinstance(path, PATH_T):
+            return {path: utils.xml2dictlis(path)}
+        elif isinstance(path, Iterable):
+            if all([isinstance(i, PATH_T) for i in path]):
+                return {p: utils.xml2dictlis(p) for p in path}
+        else:
+            raise TypeError(
+                "`path` must be of type str, pathlib.Path or iterable of them"
+            )
+
+    @classmethod
+    def discovery_and_load(cls, root: Path_T, pat: Pattern_T):
+        """Convenience method for applying `load` on dynamically discovered files.
+
+        Args:
+            root (Path_T): where to start searching for files
+            pat (Pattern_T): the pattern each file must match to be loaded
+
+        Raises:
+            TypeError: [description]
+
+        Returns:
+            [type]: [description]
+        """
+        _type_checking(root, 'root', PATH_T)
+        _type_checking(pat, 'pat', PATTERN_T)
+
+        return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
+
+
