@@ -1,10 +1,14 @@
 import os
+import re
 import xml
 import xml.etree.ElementTree as ET
 import pandas as pd
+import numpy as np                                                      
+
+
 import glob
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Union, Tuple, List, Dict, Iterable
 
 
 def extract_text_and_offset(annot: ET):
@@ -72,7 +76,8 @@ def xml2dictlis(root: Union[str, Path, ET.Element]):
         lis.append(row_act)
 
         del row_act
-    return lis
+    
+    return [d for d in lis if any( [re.match('Ato_', j) for j in d] )]
 
 
 def get_all_files(root, pat=r'.*[.]xml$'):
@@ -90,4 +95,27 @@ def _type_checking(obj, name, classes):
             f"`{name}` must be of type: {', '.join(map(str,classes))}"
         )
     return True    
+
+
+def pad_dataframe(df: pd.DataFrame, to_pad: Iterable[str], fill_va=np.nan):
+    """ 'Pad' dataframe by adding columns of `fill_va`.
+
+    Given a pandas DataFrame, a list of 'paddable' columns,
+    each paddable column not present in `df`` is added it
+    having only `fill_va` values.
+    Args:
+        df (pd.DataFrame): pandas DataFrame to be padded
+        to_pad (Iterable[str]): iterable containing columns to be padded
+        fill_va: an arbitrary value to be set on padded columns
+    """
+    _type_checking(df, 'df', (pd.DataFrame,))
+    _type_checking(to_pad, 'to_pad', (Iterable, ))
+    for idx, it in enumerate(to_pad):
+        _type_checking(it, f'to_pad[{idx}]', (str, ))
+    
+
+    df_cols = set(df.columns)
+    pad_cols = set(to_pad)
+    df[list(pad_cols - df_cols)] = np.nan
+
 

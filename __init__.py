@@ -1,6 +1,7 @@
 try:
     from knedle_nlp.core import utils
 
-except:
-    pass
+except Exception as e:
+    print("[__init__.py]:", e)
+
 
