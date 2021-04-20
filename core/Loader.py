@@ -99,51 +99,6 @@ class LoaderXML:
     """Class aiming to facilitate extraction of XML annotated data.
 
     """
-
-    @classmethod
-    def load(cls, path: Union[Path_T, Iterable[Path_T]]):
-        """Main class method to extract annotations from XML files.
-
-        Args:
-            path (Union[Path_T, Iterable[Path_T]]): path to one or more XML files
-
-        Returns:
-            Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having 
-                annotations attributes and values
-        """
-        if isinstance(path, PATH_T):
-            return {path: utils.xml2dictlis(path)}
-        elif isinstance(path, Iterable) and all([isinstance(i, PATH_T) for i in path]):
-                return {p: utils.xml2dictlis(p) for p in path}
-        else:
-            raise TypeError(
-                "`path` must be of type str, pathlib.Path or iterable of them"
-            )
-
-
-    @classmethod
-    def discovery_and_load(cls, root: Path_T, pat: Pattern_T):
-        """Convenience method for applying `load` on dynamically discovered files.
-
-        Args:
-            root (Path_T): where to start searching for files
-            pat (Pattern_T): the pattern each file must match to be loaded
-
-        Raises:
-            TypeError: [description]
-
-        Returns:
-            [type]: [description]
-        """
-        _type_checking(root, 'root', PATH_T)
-        _type_checking(pat, 'pat', PATTERN_T)
-
-        return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
-
-
-class LoaderByAct:
-    """Class to load xml files by act.
-    """
     atos_dict = {
         'Ato_Retificacao_Comissionado':[
             'Ato_Retificacao_Comissionado',
@@ -340,31 +295,104 @@ class LoaderByAct:
         ]
     }
 
-
     def __init__(self, path: Union[Path_T, Iterable[Path_T]]):
         """
         Args:
             path (Union[Path_T, Iterable[Path_T]]): location(s) of `xml` file(s)
         """
         self.xml_dicts = LoaderXML.load(path)
-    
 
-    def load(self, act_name: str):
-        """Utility method to get only specific `act_name` data.
+
+    def __getitem__(self, act_name: str):
+        return self.get(act_name)
+
+
+    def get(self, act_name: str):
+        if act_name not in self.atos_dict:
+            raise ValueError(f"`act_name` must be any of {', '.join(self.atos_dict)}")
+        wished_columns = ['rel_id', 'rel_annotator'] + self.atos_dict.get(act_name, [])
+        return {
+            path: pd.concat(
+                    [pd.DataFrame( [d.values()], columns=d.keys())
+                        for d in lis if act_name in d]
+                )
+                for (path, lis) in self.xml_dicts.items()
+                or pd.DataFrame([], columns=wished_columns)            
+        }
+
+
+    @classmethod
+    def load(cls, path: Union[Path_T, Iterable[Path_T]]):
+        """Main class method to extract annotations from XML files.
 
         Args:
-            act_name (str): name of act to be extracted
+            path (Union[Path_T, Iterable[Path_T]]): path to one or more XML files
 
         Returns:
-            [Dict[str, pd.DataFrame]]: dictionaty from path to pandas DataFrame
+            Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having 
+                annotations attributes and values
         """
-        df_dict = {}
-        wished_columns = ['rel_id', 'rel_annotator'] + LoaderByAct.atos_dict[act_name]
+        if isinstance(path, PATH_T):
+            return {path: utils.xml2dictlis(path)}
+        elif isinstance(path, Iterable) and all([isinstance(i, PATH_T) for i in path]):
+                return {p: utils.xml2dictlis(p) for p in path}
+        else:
+            raise TypeError(
+                "`path` must be of type str, pathlib.Path or iterable of them"
+            )
 
-        for path, lis in self.xml_dicts.items():
-            # Select acts of type `act_name`
-            act_lis = [d for d in lis if act_name in d]
-            df_dict[path] = pd.DataFrame(act_lis)
-        return df_dict
+
+    @classmethod
+    def discovery_and_load(cls, root: Path_T, pat: Pattern_T):
+        """Convenience method for applying `load` on dynamically discovered files.
+
+        Args:
+            root (Path_T): where to start searching for files
+            pat (Pattern_T): the pattern each file must match to be loaded
+
+        Raises:
+            TypeError: [description]
+
+        Returns:
+            [type]: [description]
+        """
+        _type_checking(root, 'root', PATH_T)
+        _type_checking(pat, 'pat', PATTERN_T)
+
+        return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
+
+
+    
+
+# class LoaderByAct:
+#     """Class to load xml files by act.
+#     """
+
+
+#     def __init__(self, path: Union[Path_T, Iterable[Path_T]]):
+#         """
+#         Args:
+#             path (Union[Path_T, Iterable[Path_T]]): location(s) of `xml` file(s)
+#         """
+#         self.xml_dicts = LoaderXML.load(path)
+    
+
+#     def load(self, act_name: str):
+#         """Utility method to get only specific `act_name` data.
+
+#         Args:
+#             act_name (str): name of act to be extracted
+
+#         Returns:
+#             [Dict[str, pd.DataFrame]]: dictionaty from path to pandas DataFrame
+#         """
+#         df_dict = {}
+#         wished_columns = ['rel_id', 'rel_annotator'] + LoaderByAct.atos_dict[act_name]
+
+#         for path, lis in self.xml_dicts.items():
+#             # Select acts of type `act_name`
+#             act_lis = [d for d in lis if act_name in d]
+#             df_dict[path] = pd.DataFrame(act_lis)
+#         return df_dict
 
 
