@@ -1,5 +1,5 @@
 try:
-    from knedle_nlp.core import utils
+    from dodflib.core import utils
 
 except Exception as e:
     print("[__init__.py]:", e)

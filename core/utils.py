@@ -117,5 +117,5 @@ def pad_dataframe(df: pd.DataFrame, to_pad: Iterable[str], fill_va=np.nan):
     df_cols = set(df.columns)
     pad_cols = set(to_pad)
     df[list(pad_cols - df_cols)] = np.nan
-
+    return df
 

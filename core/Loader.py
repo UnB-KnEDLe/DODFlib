@@ -6,8 +6,9 @@ import attr
 from pathlib import Path
 from typing import Dict, Iterable, List, Union 
 
-from knedle_nlp.core import utils
-from knedle_nlp.core.utils import _type_checking
+from dodflib.core import utils
+from dodflib.core.utils import _type_checking, pad_dataframe
+import itertools
 
 Iter = Iterable
 Path_T = Union[str, Path]
@@ -18,6 +19,7 @@ ITER = Iterable
 PATH_T = Path_T.__dict__['__args__']
 PATTERN_T = Pattern_T.__dict__['__args__']
 
+NonteType = type(None)
 
 def gen_all_files(root, pat=r'.*[.]py$'):
 
@@ -46,53 +48,6 @@ def base_assembler(seq: Iterable[pd.DataFrame]):
     """
     return pd.concat(seq) 
 
-
-
-@attr.s
-class Loader:
-    """Loads data.
-    
-    Applies `assembler` to every file parsed by `parser`, assembling the whole data.
-    Args:
-        root_or_data (Union[str, Path, pd.DataFrame]):
-            if Union[str, Path]:    path to root having the `input` data files,
-            if pd.DataFrame: DataFrame containing the input data
-        file_parser (Callable): 
-            a callable that is going to be called for each data file
-        pattern (Union[str, re.Pattern]):
-            pattern to be matched against each file under `root_or_data`
-        assembler (Callable):
-            callable responsible for processing all files found and
-            to glue it all together 
-
-    """
-    root_or_data = attr.ib()
-    parser = attr.ib(default=None)
-    assembler = attr.ib(default=None)
-    pattern = attr.ib(default=None)
-
-
-    def fit(self, *args, **kwargs):
-        return self
-
-
-    def transform(self, root_or_data=None):
-        self.root_or_data = root_or_data or self.root_or_data
-        if isinstance(self.root_or_data, (str, Path)):
-            if os.path.isdir(self.root_or_data):
-                generator = gen_all_files(self.root_or_data, self.pattern)
-                assembled = assembler(map(self.parser, generator))
-            elif os.path.isfile(self.root_or_data):
-                assembled = assembler(map(self.parser, [Path(self.root_or_data)]))
-            else:
-                raise ValueError("`self.root_or_data` must be an path to file or folder.")
-        elif isinstance(self.root_or_data, (pd.DataFrame, )):
-            assembled = self.root_or_data.copy()
-        return assembled
-
-
-    def load(self, root_or_data=None):
-        return self.transform(root_or_data)
 
 
 class LoaderXML:
@@ -294,6 +249,32 @@ class LoaderXML:
             'vigencia',
         ]
     }
+    all_columns = set( itertools.chain(*(cols for cols in atos_dict.values())))
+
+
+    @property
+    def act_names(self):
+        return list(atos_dict.keys())
+
+
+    def _robust_concat(self, df_lis, columns=[]):
+        """Returns a pandas DataFrame of all `df_lis` dataframes.
+
+        Args:
+            df_lis ([type]): [description]
+            columns ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """
+        dfinal = None
+        try:
+            dfinal = pd.concat(df_lis)
+            dfinal = pad_dataframe(dfinal, to_pad=columns)
+        except Exception as e:
+            dfinal = pd.DataFrame([], columns=columns)
+        return dfinal
+
 
     def __init__(self, path: Union[Path_T, Iterable[Path_T]]):
         """
@@ -301,24 +282,52 @@ class LoaderXML:
             path (Union[Path_T, Iterable[Path_T]]): location(s) of `xml` file(s)
         """
         self.xml_dicts = LoaderXML.load(path)
+        self._by_acts = self._build_data_by_act_name()
+        # self._by_path = 
+
+    
+    def _build_data_by_act_name(self):
+        d = {}
+        aux_cols = ['rel_id', 'rel_annotator']
+        for (act_name, act_cols) in self.atos_dict.items():
+            cols = aux_cols + act_cols
+            df_lis = []
+            for (path, lis) in self.xml_dicts.items():
+                has_act_name = [d for d in lis if not pd.isna(d.get(act_name))]
+                df_act_name = self._robust_concat([
+                    pd.DataFrame( [ d.values() ], columns=d.keys() )
+                    for d in has_act_name                
+                ], cols)
+                df_act_name['path'] = path
+                df_act_name.set_index(['rel_id', 'path'], drop=True, inplace=True,)
+                df_lis.append(df_act_name)
+                
+            d[act_name] = pd.concat(df_lis)
+        return d
 
 
-    def __getitem__(self, act_name: str):
-        return self.get(act_name)
+
+    def get(self, key: str = None):
+        if key.startswith('path:'):
+            return self.get_by_path(key[5:])
+        else:    
+            return self.get_by_act(key)
 
 
-    def get(self, act_name: str):
-        if act_name not in self.atos_dict:
-            raise ValueError(f"`act_name` must be any of {', '.join(self.atos_dict)}")
-        wished_columns = ['rel_id', 'rel_annotator'] + self.atos_dict.get(act_name, [])
-        return {
-            path: pd.concat(
-                    [pd.DataFrame( [d.values()], columns=d.keys())
-                        for d in lis if act_name in d]
-                )
-                for (path, lis) in self.xml_dicts.items()
-                or pd.DataFrame([], columns=wished_columns)            
-        }
+    def __getitem__(self, key):
+        return self.get(key)
+
+
+    def get_by_act(self, act_name: str):
+        return self._by_acts[act_name]
+
+
+    def get_by_path(self, path):
+        lis = []
+        for d in self.xml_dicts[path]:
+            df = pd.DataFrame([d.values()], columns=d.keys())
+            lis.append(df)
+        return self._robust_concat(lis, self.all_columns).set_index(['rel_id'])
 
 
     @classmethod
@@ -360,39 +369,4 @@ class LoaderXML:
         _type_checking(pat, 'pat', PATTERN_T)
 
         return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
-
-
-    
-
-# class LoaderByAct:
-#     """Class to load xml files by act.
-#     """
-
-
-#     def __init__(self, path: Union[Path_T, Iterable[Path_T]]):
-#         """
-#         Args:
-#             path (Union[Path_T, Iterable[Path_T]]): location(s) of `xml` file(s)
-#         """
-#         self.xml_dicts = LoaderXML.load(path)
-    
-
-#     def load(self, act_name: str):
-#         """Utility method to get only specific `act_name` data.
-
-#         Args:
-#             act_name (str): name of act to be extracted
-
-#         Returns:
-#             [Dict[str, pd.DataFrame]]: dictionaty from path to pandas DataFrame
-#         """
-#         df_dict = {}
-#         wished_columns = ['rel_id', 'rel_annotator'] + LoaderByAct.atos_dict[act_name]
-
-#         for path, lis in self.xml_dicts.items():
-#             # Select acts of type `act_name`
-#             act_lis = [d for d in lis if act_name in d]
-#             df_dict[path] = pd.DataFrame(act_lis)
-#         return df_dict
-
 
