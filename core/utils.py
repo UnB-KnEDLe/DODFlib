@@ -119,3 +119,22 @@ def pad_dataframe(df: pd.DataFrame, to_pad: Iterable[str], fill_va=np.nan):
     df[list(pad_cols - df_cols)] = np.nan
     return df
 
+
+class TransformerSelectColumn: 
+    def __init__(self, c): 
+        self.c = c 
+    def fit(self, X, y=None, **kwargs): 
+        return self 
+    def transform(self, X, **kwargs): 
+        return X[self.c] 
+
+
+class TansformerDropPattern: 
+    def __init__(self, pat: str): 
+        self.pat = pat
+    def fit(self, X, y=None, **kwargs): 
+        return self 
+    def transform(self, X: pd.DataFrame, **kwargs): 
+        return X.drop(X.filter(regex=self.pat).columns, axis=1)
+
+

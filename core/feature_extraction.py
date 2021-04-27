@@ -3,13 +3,14 @@ import re
 import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-from typing import Iterable, List, Tuple, Dict, Callable, Union
+from typing import List, Tuple, Dict, Callable, Union
+from typing import Iterable as Iter
 
-def crf_sentence_featurizer(tokens: Iterable[str]):
+def crf_sentence_featurizer(tokens: Iter[str]):
     """Generates features from sequence of tokens.
 
     Args:
-        tokens (Iterable[str]): [description]
+        tokens (Iter[str]): [description]
 
     Returns:
         List[Dict]: list of dicts containing the feature of each token 
@@ -32,22 +33,21 @@ def crf_sentence_featurizer(tokens: Iterable[str]):
 class TransfomerCRF(BaseEstimator, TransformerMixin):
 
 
-    def __init__(self, sent_featurizer: Callable = None, lazy: bool = True):
+    def __init__(self, sent_featurizer: Callable = None,):
         self.text_matrix  = []
+        # self.tokenizer = tokenizer
         self.sent_featurizer = sent_featurizer or crf_sentence_featurizer
-        self.lazy = lazy
-    
 
     def fit(self, X = None, y=None, **fit_params):
         return self
 
 
-    def transform(self, X: Iterable[Iterable[str]]]):
-        if self.lazy:
-            X = map(self.sent_featurizer, X)
-        else:
-            X = [self.sent_tokenizer(row) for row in X]
-        return X
+    def transform(self, X: Iter[Iter[str]] ):
+        if not isinstance(X, pd.Series):
+            X = pd.Series(X)
+        X = X.map(self.sent_featurizer)
+        # X = X.map(self.tokenizer).map(self.sent_featurizer)
+        return X.values
     
 
 class TransformerIOB(BaseEstimator, TransformerMixin):
@@ -65,13 +65,5 @@ class TransformerIOB(BaseEstimator, TransformerMixin):
 
 
     def transform(self, X=None):
-
-        if isinstance(X, pd.DataFrame):
-            X = X.apply()
-        if self.lazy:
-            X = map(self.sent_featurizer, X)
-        else:
-            X = [self.sent_tokenizer(row) for row in X]
         return X
-    
 

@@ -299,7 +299,7 @@ class LoaderXML:
                     for d in has_act_name                
                 ], cols)
                 df_act_name['path'] = path
-                df_act_name.set_index(['rel_id', 'path'], drop=True, inplace=True,)
+                df_act_name.set_index(['rel_id', 'rel_annotator', 'path'], drop=True, inplace=True,)
                 df_lis.append(df_act_name)
                 
             d[act_name] = pd.concat(df_lis)
