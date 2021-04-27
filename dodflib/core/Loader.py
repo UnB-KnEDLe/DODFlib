@@ -2,7 +2,6 @@ import os
 import re
 import pandas as pd
 import numpy as np
-import attr
 from pathlib import Path
 from typing import Dict, Iterable, List, Union 
 
