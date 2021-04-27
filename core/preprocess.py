@@ -53,7 +53,6 @@ class KeepOnlyOneAct(TransformerMixin, BaseEstimator):
 
 
 
-
 class IOB_Transformer:
 
 
@@ -68,14 +67,14 @@ class IOB_Transformer:
         for idx, column in enumerate(row.keys()):
             if idx == ignore_idx:
                 continue
-            if row[column] is not np.nan and token == tokenizer(row[column])[0]:
+            if isinstance(row[column], str) and \
+                token == tokenizer(row[column])[0]:
                 return column
         
         return None
 
 
-    # Atualizar no futuro para qualquer ato.
-    # Aparentemente esse algoritmo está O(n*m) onde n é a quantidade de tokens e m a quantidade de colunas do df.
+
     @staticmethod
     def generate_IOB_labels(row, idx, tokenizer):
         """Generates IOB-labeling for whole text and entities.
@@ -88,14 +87,14 @@ class IOB_Transformer:
         text = row.iloc[idx]
         for token in tokenizer(text):                         # Itera sobre cada token da anotação do ato.
             if not entity_started:                               # Caso uma entidade ainda n tenha sido identificada nos tokens.
-                entity = IOB_Transformer.find_entity(row, token)                 # Busca o token atual no primeiro token de todos os campos do df.
+                entity = IOB_Transformer.find_entity(row, token, idx)                 # Busca o token atual no primeiro token de todos os campos do df.
                 if entity is not None:                           # Se foi encontrado o token no inicio de alguma entidade ele inicia a comparação token a token com a entidade.
                     entity_started = True
                     token_index = 1
                     labels.append('B-' + entity)
                 else:
                     labels.append('O')
-            else:                                                # Caso uma entidade já tenha sido identificada
+            else:     # Caso uma entidade já tenha sido identificada
                 if token_index < len(tokenizer(row[entity])) and \
                     token == tokenizer(row[entity])[token_index]:
                     # Checa se o próximo token pertence à entidade
@@ -132,7 +131,9 @@ class IOB_Transformer:
             try:
                 labels_row.append(
                     ' '.join(
-                        IOB_Transformer.generate_IOB_labels(row, idx, self.tokenizer)
+                        IOB_Transformer.generate_IOB_labels(
+                            row, idx, self.tokenizer
+                        )
                     )
                 )
             except Exception as e:
@@ -140,6 +141,3 @@ class IOB_Transformer:
                 raise e
 
         return pd.Series(labels_row).str.split()
-
-
-
