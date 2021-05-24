@@ -1,32 +1,35 @@
-import os 
+import os
 import re
+import itertools
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, Iterable, List, Union 
+from typing import Iterable as Iter
+from typing import Dict, List, Union
 
 from dodflib.core import utils
-from dodflib.core.utils import _type_checking, pad_dataframe
-import itertools
 
-Iter = Iterable
 Path_T = Union[str, Path]
 Pattern_T = Union[str, re.Pattern]
 
 
-ITER = Iterable
+# ITER = Iter
 PATH_T = Path_T.__dict__['__args__']
 PATTERN_T = Pattern_T.__dict__['__args__']
-
 NonteType = type(None)
 
-def gen_all_files(root, pat=r'.*[.]py$'):
+
+def path2str(p: Path_T):
+    return p if isinstance(p, str) else p.as_posix()
+
+
+def gen_all_files(root, pat=r'.*[.]xml$'):
 
     """Generator for all file paths matching regex pattern `pat`.
 
-    Generates `all` files matching `pat` inclus
+    Generates `all` files matching `pat` inclusive
     Yields:
-        [type]: [description]
+        [(Path)]: [`Path` objects of descovered files]
     """
     lis = []
     for root, dirs, files in os.walk(root, topdown=True):
@@ -34,19 +37,6 @@ def gen_all_files(root, pat=r'.*[.]py$'):
        for f in files:
            if re.search(pat, f):
                yield Path(root/f)
-
-
-def base_assembler(seq: Iterable[pd.DataFrame]):
-    """Stacks dataframes.
-
-    Args:
-        seq (Iterable[pd.DataFrame]): an iterable containing only pd.DataFrames 
-
-    Returns:
-        pd.DataFrame: a big DataFrame having all the data
-    """
-    return pd.concat(seq) 
-
 
 
 class LoaderXML:
@@ -248,19 +238,33 @@ class LoaderXML:
             'vigencia',
         ]
     }
-    all_columns = set( itertools.chain(*(cols for cols in atos_dict.values())))
+    all_columns = set( itertools.chain(*atos_dict.values()))
 
 
     @property
     def act_names(self):
-        return list(atos_dict.keys())
+        return list(self.atos_dict.keys())
+
+
+    def __init__(self, path: Union[Path_T, Iter[Path_T]], pat=r'.*[.]xml'):
+        """
+        Args:
+            path (Union[Path_T, Iter[Path_T]]): location(s) of `xml` file(s)
+        """
+        self.xml_dicts = LoaderXML.load(path, pat)
+        self._by_acts = self._build_data_by_act_name()
+        # self._by_path =
+
+
+    def __getitem__(self, key):
+        return self.get(key)
 
 
     def _robust_concat(self, df_lis, columns=[]):
-        """Returns a pandas DataFrame of all `df_lis` dataframes.
+        """Returns a pandas DataFrame containing `df_lis` dataframes stacked.
 
         Args:
-            df_lis ([type]): [description]
+            df_lis ([]): [description]
             columns ([type]): [description]
 
         Returns:
@@ -269,22 +273,12 @@ class LoaderXML:
         dfinal = None
         try:
             dfinal = pd.concat(df_lis)
-            dfinal = pad_dataframe(dfinal, to_pad=columns)
+            dfinal = utils.pad_dataframe(dfinal, to_pad=columns)
         except Exception as e:
             dfinal = pd.DataFrame([], columns=columns)
         return dfinal
 
 
-    def __init__(self, path: Union[Path_T, Iterable[Path_T]]):
-        """
-        Args:
-            path (Union[Path_T, Iterable[Path_T]]): location(s) of `xml` file(s)
-        """
-        self.xml_dicts = LoaderXML.load(path)
-        self._by_acts = self._build_data_by_act_name()
-        # self._by_path = 
-
-    
     def _build_data_by_act_name(self):
         d = {}
         aux_cols = ['rel_id', 'rel_annotator']
@@ -295,26 +289,21 @@ class LoaderXML:
                 has_act_name = [d for d in lis if not pd.isna(d.get(act_name))]
                 df_act_name = self._robust_concat([
                     pd.DataFrame( [ d.values() ], columns=d.keys() )
-                    for d in has_act_name                
+                    for d in has_act_name
                 ], cols)
                 df_act_name['path'] = path
                 df_act_name.set_index(['rel_id', 'rel_annotator', 'path'], drop=True, inplace=True,)
                 df_lis.append(df_act_name)
-                
+
             d[act_name] = pd.concat(df_lis)
         return d
-
 
 
     def get(self, key: str = None):
         if key.startswith('path:'):
             return self.get_by_path(key[5:])
-        else:    
+        else:
             return self.get_by_act(key)
-
-
-    def __getitem__(self, key):
-        return self.get(key)
 
 
     def get_by_act(self, act_name: str):
@@ -330,20 +319,24 @@ class LoaderXML:
 
 
     @classmethod
-    def load(cls, path: Union[Path_T, Iterable[Path_T]]):
+    def load(cls, path: Union[Path_T, Iter[Path_T]], pat=r'.*[.]xml$'):
         """Main class method to extract annotations from XML files.
 
         Args:
-            path (Union[Path_T, Iterable[Path_T]]): path to one or more XML files
+            path (Union[Path_T, Iter[Path_T]]): path to one or more XML files
 
         Returns:
-            Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having 
+            Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having
                 annotations attributes and values
         """
         if isinstance(path, PATH_T):
-            return {path: utils.xml2dictlis(path)}
-        elif isinstance(path, Iterable) and all([isinstance(i, PATH_T) for i in path]):
-                return {p: utils.xml2dictlis(p) for p in path}
+            if os.path.isdir(path):
+                return {
+                    path2str(p): utils.xml2dictlis(p) for p in gen_all_files(path, pat)
+                }
+            return {path2str(path): utils.xml2dictlis(path)}
+        elif isinstance(path, Iter) and all([isinstance(i, PATH_T) for i in path]):
+            return {path2str(p): utils.xml2dictlis(p) for p in path}
         else:
             raise TypeError(
                 "`path` must be of type str, pathlib.Path or iterable of them"
@@ -364,8 +357,8 @@ class LoaderXML:
         Returns:
             [type]: [description]
         """
-        _type_checking(root, 'root', PATH_T)
-        _type_checking(pat, 'pat', PATTERN_T)
+        utils.type_checking(root, 'root', PATH_T)
+        utils.type_checking(pat, 'pat', PATTERN_T)
 
         return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
 
