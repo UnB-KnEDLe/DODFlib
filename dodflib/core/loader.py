@@ -271,8 +271,8 @@ class LoaderXML:
     def __getitem__(self, key):
         return self.get(key)
 
-
-    def _robust_concat(self, df_lis, columns=[]):
+    @staticmethod
+    def _robust_concat(df_lis, columns=[]):
         """Returns a pandas DataFrame containing `df_lis` dataframes stacked.
 
         Args:
@@ -282,7 +282,6 @@ class LoaderXML:
         Returns:
             [pd.DataFrame]: [dataframe resulted from stacking `df_lis` elements]
         """
-        dfinal = None
         try:
             dfinal = pd.concat(df_lis)
         except Exception as e:
