@@ -45,10 +45,9 @@ def xml2dictlis(root: Union[str, Path, ET.Element], prefix='Ato_'):
         prefix ([str]): filter to decide which nodes will be retrieved
     Raises:
         TypeError: raised when the type of `root` is innadequate
-
+        ValueError: raised when `root` is a path to directory
     Returns:
-        lis: list of `dict` each having the keys and values of
-            an kind of act
+        [List]: list of `dict` each having the keys and values of an kind of act
     """
     if isinstance(root, (str, Path)):
         if os.path.isdir(root):
@@ -89,16 +88,17 @@ def type_checking(obj, name, classes):
     return True
 
 
-def pad_dataframe(df: pd.DataFrame, to_pad: Iter[str], fill_va=np.nan):
+def pad_dataframe(df: pd.DataFrame, to_pad: Iter[str], fill_va='*'):
     """ 'Pad' dataframe by adding columns of `fill_va`.
 
     Given a pandas DataFrame, a list of 'paddable' columns,
-    each paddable column not present in `df`` is added it
-    having only `fill_va` values.
+    each paddable column not present in `df`` is added and filled
+    with `fill_va` values.
     Args:
         df (pd.DataFrame): pandas DataFrame to be padded
         to_pad (Iter[str]): iterable containing columns to be padded
         fill_va: an arbitrary value to be set on padded columns
+
     """
     type_checking(df, 'df', (pd.DataFrame,))
     type_checking(to_pad, 'to_pad', (Iter, ))

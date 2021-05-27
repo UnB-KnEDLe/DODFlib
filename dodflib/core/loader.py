@@ -30,6 +30,8 @@ def gen_all_files(root, pat=r'.*[.]xml$'):
     Generates `all` files matching `pat` inclusive
     Yields:
         [(Path)]: [`Path` objects of descovered files]
+    Note: `pat` is matched against file path from the perspective
+        of its containing folder.
     """
     lis = []
     for root, dirs, files in os.walk(root, topdown=True):
@@ -246,14 +248,24 @@ class LoaderXML:
         return list(self.atos_dict.keys())
 
 
+    @property
+    def act_paths(self):
+        """File names available to query acts by.
+
+        Returns:
+            [List[str]]: [list having the path to files whose acts where extracted from ]
+        """
+        return list(self.xml_dicts.keys())
+
+
     def __init__(self, path: Union[Path_T, Iter[Path_T]], pat=r'.*[.]xml'):
         """
         Args:
             path (Union[Path_T, Iter[Path_T]]): location(s) of `xml` file(s)
         """
+        
         self.xml_dicts = LoaderXML.load(path, pat)
         self._by_acts = self._build_data_by_act_name()
-        # self._by_path =
 
 
     def __getitem__(self, key):
@@ -264,16 +276,15 @@ class LoaderXML:
         """Returns a pandas DataFrame containing `df_lis` dataframes stacked.
 
         Args:
-            df_lis ([]): [description]
-            columns ([type]): [description]
+            df_lis ([List[pd.DataFrame]]): [the dataframes to be concatenated]
+            columns ([type]): [columns of empty dataframe if `df_lis` has no elements]
 
         Returns:
-            [type]: [description]
+            [pd.DataFrame]: [dataframe resulted from stacking `df_lis` elements]
         """
         dfinal = None
         try:
             dfinal = pd.concat(df_lis)
-            dfinal = utils.pad_dataframe(dfinal, to_pad=columns)
         except Exception as e:
             dfinal = pd.DataFrame([], columns=columns)
         return dfinal
@@ -299,7 +310,8 @@ class LoaderXML:
         return d
 
 
-    def get(self, key: str = None):
+    def get(self, key: Path_T):
+        key = path2str(key)
         if key.startswith('path:'):
             return self.get_by_path(key[5:])
         else:
@@ -324,10 +336,11 @@ class LoaderXML:
 
         Args:
             path (Union[Path_T, Iter[Path_T]]): path to one or more XML files
-
+            pat (Union[str, re.Pattern]): pattern to which file names must match
         Returns:
             Dict[Union[str, Path], List[Dict]]: dict mapping filename -> list of dict having
                 annotations attributes and values
+        
         """
         if isinstance(path, PATH_T):
             if os.path.isdir(path):
@@ -341,24 +354,4 @@ class LoaderXML:
             raise TypeError(
                 "`path` must be of type str, pathlib.Path or iterable of them"
             )
-
-
-    @classmethod
-    def discovery_and_load(cls, root: Path_T, pat: Pattern_T):
-        """Convenience method for applying `load` on dynamically discovered files.
-
-        Args:
-            root (Path_T): where to start searching for files
-            pat (Pattern_T): the pattern each file must match to be loaded
-
-        Raises:
-            TypeError: [description]
-
-        Returns:
-            [type]: [description]
-        """
-        utils.type_checking(root, 'root', PATH_T)
-        utils.type_checking(pat, 'pat', PATTERN_T)
-
-        return {p: utils.xml2dictlis(p) for p in gen_all_files(root, pat)}
 

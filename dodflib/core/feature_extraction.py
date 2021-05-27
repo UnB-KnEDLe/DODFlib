@@ -35,8 +35,8 @@ class Tokenizer(TransformerMixin, BaseEstimator):
 
 class CRFFeaturizer(BaseEstimator, TransformerMixin):
 
-    @staticmethod
-    def crf_sentence_featurizer(tokens: Iter[str]):
+    @classmethod
+    def crf_sentence_featurizer(cls, tokens: Iter[str]):
         """Generates features from sequence of tokens.
 
         Args:
@@ -62,7 +62,6 @@ class CRFFeaturizer(BaseEstimator, TransformerMixin):
 
     def __init__(self, sent_featurizer: Callable = None,):
         self.text_matrix  = []
-        # self.tokenizer = tokenizer
         self.sent_featurizer = sent_featurizer or self.crf_sentence_featurizer
 
 

@@ -1,5 +1,4 @@
 import os
-import nltk
 import pandas as pd
 import numpy as np
 
@@ -75,13 +74,18 @@ class IOBifyer(TransformerMixin, BaseEstimator):
         return None
 
 
-
     @staticmethod
     def generate_IOB_labels(row, idx, tokenizer, dbg={}):
-        """Generates IOB-labeling for whole text and entities.
+        """[summary]
 
-        Assumes `row` has the whole text on the first collumn
-        and the remaining contain entities.
+        Args:
+            row ([pd.Series]): [pandas series having act text and entities text]
+            idx ([int]): [index such that `row[idx]` has the whole act]
+            tokenizer ([Callable]): [function to use to tokenize `row[idx]`]
+            dbg (dict, optional): [dictionay for debug purposes]. Defaults to {}.
+
+        Returns:
+            [Iter[Iter[str]]]: [matrix of IOB labels]
         """
         labels = []
         entity_started = False
@@ -112,13 +116,40 @@ class IOBifyer(TransformerMixin, BaseEstimator):
                     labels.append('O')
         if labels[0] != 'O':
             dbg['l'] = dbg.get('l', []) + [(row, idx)]
-            # print("OPA... por que o primeiro não é `O`?")
-            # print(labels[:5])
-            # print(text)
-            # input()
 
         return labels
 
+
+    @staticmethod
+    def dump_iob(tokens_mat, labels_mat, path='dump.txt',
+                            sep=' X X ', sent_sep='\n',):
+        """This method dumps the token matrix according its IOB labels.
+
+        For debug purposes, a list of list of pairs (token, label) is returned.
+        Args:
+            tokens_mat ([Iter[Iter[str]]]): [matrix of strings corresponding to tokens]
+            labels_mat ([Iter[Iter[str]]]): [matrix of strings corresponding to IOB labels]
+            path (str, optional): [Path to dump text file]. Defaults to 'dump.txt'.
+            sep (str, optional): [description]. Defaults to ' X X '.
+            sent_sep (str, optional): [description]. Defaults to '\n'.
+
+        Returns:
+            [List[LIst[Tuple(str, str)]]]: [list of list of pairs (token, label), as dumped. For debug purposes.]
+        """
+        dbg_mat = []
+        if isinstance(path, Path):
+            path = path.as_posix()
+        if '/' in path:
+            os.makedirs('/'.join(path.split('/')[:-1]), exist_ok=True)
+
+        with open(path, 'w') as fp:
+            for tokens_lis, labels_lis in zip(tokens_mat, labels_mat):
+                dbg_mat.append([])
+                for token, label in zip(tokens_lis, labels_lis):
+                    dbg_mat[-1].append((token, label))
+                    fp.write(f"{token}{sep}{label}\n")
+                fp.write(sent_sep)
+        return dbg_mat
 
 
     def __init__(self, column='act_column',
@@ -126,6 +157,7 @@ class IOBifyer(TransformerMixin, BaseEstimator):
         self.column = column
         self.tokenizer = tokenizer
         self.dbg = {}
+
 
     def fit(self, X=None, y=None, **fit_params):
         return self
@@ -149,33 +181,8 @@ class IOBifyer(TransformerMixin, BaseEstimator):
                     )
                 )
             except Exception as e:
-                print(row)
+                print("problem iobifyin row:", row)
                 raise e
-        try:
-            return pd.Series(labels_row)
-        except Exception as e:
-            print("uups!")
-            print("df:", df)
-            print("labels_row: ", labels_row)
-            raise e
-
-
-    def dump_iob(self, sentences, labels_mat, path='dump.txt',
-                            sep=' X X ', sent_sep='\n', tokenize=True):
-        if tokenize:
-            sentences = (self.tokenizer(s) for s in sentences)
-        lis = []
-        if isinstance(path, Path):
-            path = path.as_posix()
-        if '/' in path:
-            os.makedirs('/'.join(path.split('/')[:-1]), exist_ok=True)
-
-        with open(path, 'w') as fp:
-            for tokens, labels in zip(sentences, labels_mat):
-                for tok, label in zip(tokens, labels):
-                    lis.append((tok, label))
-                    fp.write(f"{tok}{sep}{label}\n")
-                fp.write(sent_sep)
-        return lis
+        return pd.Series(labels_row)
 
 
