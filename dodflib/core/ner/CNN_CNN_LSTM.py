@@ -4,7 +4,7 @@ from math import sqrt
 from torch.nn.utils import weight_norm
 from torch.nn.utils.rnn import pad_sequence
 
-class Char_CNN(nn.Module):
+class char_cnn(nn.Module):
     """single layer CNN with: filters=50, kernel_size=3, dropout=0.5
     CHANGES:
     - kaiming_uniform initialization of convolution weights
@@ -13,7 +13,7 @@ class Char_CNN(nn.Module):
     - Added weight_norm to conv layers
     """
     def __init__(self, embedding_size, embedding_dim, out_channels):
-        super(Char_CNN, self).__init__()
+        super(char_cnn, self).__init__()
         self.embedding = nn.Embedding(
             num_embeddings=embedding_size, 
             embedding_dim=embedding_dim, 
@@ -40,7 +40,7 @@ class Char_CNN(nn.Module):
         return x.reshape([shape[0], shape[1], -1])
 
 
-class Word_CNN(nn.Module):
+class word_cnn(nn.Module):
     """
     Word-level CNN encoder
     CHANGES:
@@ -49,7 +49,7 @@ class Word_CNN(nn.Module):
     - Added embedding dropout after concat word and char embeddings
     """
     def __init__(self, pretrained_word_emb, word2idx, full_embedding_size, conv_layers, out_channels):
-        super(Word_CNN, self).__init__()
+        super(word_cnn, self).__init__()
         self.word2idx = word2idx
         self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_word_emb.vectors))
         # self.conv1 = nn.Conv1d(in_channels=full_embedding_size, out_channels=out_channels, kernel_size=5, padding=2)
@@ -101,12 +101,12 @@ class Word_CNN(nn.Module):
 
 
 
-class LSTM_Decoder(nn.Module):
+class decoder(nn.Module):
     """
     LSTM decoder (greedy decoding)
     """
     def __init__(self, feature_size, num_classes, hidden_size, decoder_layers, device):
-        super(LSTM_Decoder, self).__init__()
+        super(decoder, self).__init__()
         self.device = device
         self.num_classes = num_classes
         self.lstm = torch.nn.LSTM(
@@ -183,24 +183,26 @@ class CNN_CNN_LSTM(nn.Module):
                     decoder_layers, decoder_hidden_size, device):
         super(CNN_CNN_LSTM, self).__init__()
         self.num_classes = num_classes
-        self.char_encoder = Char_CNN(
+        self.char_encoder = char_cnn(
             embedding_size=char_vocab_size, 
             embedding_dim=char_embedding_dim, 
             out_channels=char_out_channels)
-        self.word_encoder = Word_CNN(
+        self.word_encoder = word_cnn(
             pretrained_word_emb=pretrained_word_emb, 
             word2idx=word2idx, 
             conv_layers = word_conv_layers, 
             full_embedding_size=pretrained_word_emb.vector_size+char_out_channels, 
             out_channels=word_out_channels)
-        self.decoder      = LSTM_Decoder(
+        self.decoder      = decoder(
             num_classes=num_classes, 
             feature_size=pretrained_word_emb.vector_size+char_out_channels+word_out_channels, 
             hidden_size=decoder_hidden_size, 
             decoder_layers=decoder_layers, device=device)
 
     def forward(self, sentence, word, tag, mask):
-
+        # print("type(x): ", type(x))
+        # print("x = self.char_encoder(word):: ", x.shape)
+        # print(x.dtype)
         x = self.char_encoder(word)
         x = self.word_encoder(sentence, x)
         x = self.decoder(x, tag)

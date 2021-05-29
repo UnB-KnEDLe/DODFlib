@@ -1,7 +1,10 @@
 import torch
 from torch import nn
 from math import sqrt
-from dodflib.core.ner.crf import CRF
+try: 
+    from dodflib.core.ner.crf import CRF
+except:
+    from crf import CRF
 from torch.nn.utils.rnn import pad_sequence
 
 class Char_CNN(nn.Module):

@@ -36,9 +36,12 @@ def find_entities(tag):
     return entities
 
 
-def create_word2idx_dict(index_to_key, key_to_index, train_path):
-    return {w: key_to_index[w] for w in index_to_key}
+# def create_word2idx_dict(index_to_key, key_to_index, train_path):
+#     return {w: key_to_index[w] for w in index_to_key}
 
+# versao mais nova no ze reinaldo
+def create_word2idx_dict(emb, train_path):
+    return emb.key_to_index
 
 def create_char2idx_dict(train_path, verbose=False):
     if verbose: print("train_path:", train_path)
@@ -107,73 +110,9 @@ def find_iobes_entities(sentence, tag2idx):
   return entities
 
 
-# def find_iobes_entities2(sentence, tag2idx):
-#   t = [2+i for i in range(0, len(tag2idx), 4)]
-#   entities = set()
-#   tag_flag = False
-#   entity_start = -1
-#   curr_tag_class = 0
-#   for i in range(len(sentence)):
-#     tag = sentence[i]
-#     # 'O' or '<PAD>' or '<GO>' classes
-#     if tag == 0 or tag == 1:# or tag == tag2idx['<GO>']:
-#       curr_tag_class = 0
-#       tag_flag == False
-#       continue
-#     tag_class = t[bisect(t, tag)-1]
-#     tag_mark  = tag - tag_class
-#     # B- class
-#     if tag_mark == 0:
-#       tag_flag = True
-#       entity_start = i
-#       curr_tag_class = tag_class
-#     # I- class
-#     elif tag_mark == 1 and curr_tag_class != tag_class:
-#       tag_flag = False
-#     # S- class
-#     elif tag_mark == 2:
-#       entities.add((i, i, tag_class))
-#       tag_flag = False
-#     # E- class
-#     elif tag_mark == 3:
-#       if tag_flag and (curr_tag_class == tag_class):
-#         entities.add((entity_start, i, tag_class))
-#       tag_flag = False
-#   return entities
-
-
 def find_iobes_entities2(sentence, tag2idx):
     return set(find_iobes_entities(sentence, tag2idx))
 
-# def create_word2idx_dict_df(emb):
-#     dic = {}
-#     for word in emb.index_to_key:
-#         dic[word] = emb.key_to_index[word]
-#     return dic
-
-
-# def create_char2idx_dict_df(df, act_tokens_col='ato'):
-#     dic = {'<PAD>': 0, '<UNK>': 1, '<START>': 2, '<END>': 3}
-
-#     chars = df[act_tokens_col].explode().apply(list).explode().unique()
-#     chars_dic = dict((i[::-1] for i in enumerate(chars, start=len(dic))) )
-#     dic.update(chars_dic)
-#     return dic
-
-
-# def create_tag2idx_dict_df(df, tags_col):
-#     dic = dict(
-#         (i[::-1] for i in enumerate(df[tags_col].explode().unique()))
-#     )
-
-#     iob2_dic = {'<PAD>': 0, 'O': 1}
-#     for tag in dic:
-#         iob2_dic['B'+tag[1:]] = len(iob2_dic)
-#         iob2_dic[tag] = len(iob2_dic)
-#         iob2_dic['S'+tag[1:]] = len(iob2_dic)
-#         iob2_dic['E'+tag[1:]] = len(iob2_dic)
-
-#     return iob2_dic
 
 
 class new_custom_collate_fn():
@@ -208,13 +147,14 @@ class new_custom_collate_fn():
 def path2str(p):
     return p if isinstance(p, str) else p.as_posix()
 
-def load_embedding(dataset, train_path, test_path, embedding_path, embedding_size=50,
-    data_format='iob2', **kwargs):
-    emb = KeyedVectors.load(path2str(embedding_path))
-
-    # embedding_path = 'drive/MyDrive/knedle_data/foo.kv'
+def load_embedding(train_path, test_path, embedding_path, embedding_size=50):
+    
+    print("EMBEDDING?")
+    emb = KeyedVectors.load(embedding_path)
     vocab = {}
+    print("train??")
     f = open(train_path)
+    print("trainnnnnn")
     for line in f:
         try:
             word = line.split()[0]
@@ -228,11 +168,9 @@ def load_embedding(dataset, train_path, test_path, embedding_path, embedding_siz
     for word in vocab:
         if word not in emb and word.lower() not in emb:
             not_found[word] = vocab[word]
-
     sorted_x = sorted(not_found.items(), key=operator.itemgetter(1))[::-1]
 
-    # Augment pretrained embeddings with most frequent out-of-vocabulary 
-    # words from the train set
+    # Augment pretrained embeddings with most frequent out-of-vocabulary words from the train set
     if '<START>' not in emb:
         emb['<START>'] = np.random.uniform(0.1,1,embedding_size)
     if '<END>' not in emb:
@@ -242,29 +180,6 @@ def load_embedding(dataset, train_path, test_path, embedding_path, embedding_siz
     if '<PAD>' not in emb:
         emb['<PAD>'] = np.zeros(embedding_size)
     for (token, freq) in sorted_x[:37]:
-        # print(f'Token {token} from training set not found, it\'s being added now')
-        emb[token]= np.random.uniform(0.1, 1, 50)
+        emb[token]= np.random.uniform(0.1, 1, embedding_size)
 
     return emb
-
-
-    # tokens_col='ato'
-    # elif df is not None:
-    #     train_path = Path('exonerar.parquet')
-    #     test_path = Path('exonerar.parquet')
-    #     data_format = 'iob2'
-
-    #     embedding_path = 'drive/MyDrive/knedle_data/foo.kv'
-    #     emb = KeyedVectors.load(embedding_path)
-    #     vocab = Counter(df[tokens_col].explode())
-    #     for word in vocab:
-    #         not_found = {}
-    #         if word not in emb and word.lower() not in emb:
-    #             not_found[word] = vocab[word]
-    #     sorted_x = sorted(not_found.items(), key=operator.itemgetter(1))[::-1]
-    #     for special in ['<START>', '<END>', '<UNK>', '<PAD>']:
-    #         if special not in emb:
-    #             emb[special] = np.random.uniform(0.1,1,50)
-    #     for (token, freq) in sorted_x[:37]:
-    #         # print(f'Token {token} from training set not found, it\'s being added now')
-    #         emb[token]= np.random.uniform(0.1, 1, 50)
