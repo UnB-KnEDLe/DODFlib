@@ -13,16 +13,17 @@ import torch
 from seqeval.metrics import f1_score
 from seqeval.scheme import IOBES
 
-
-# from dodflib.core import utils
-# from dodflib.core import feature_extraction
-
 from gensim.models import KeyedVectors
 from torch.utils.data import Dataset, DataLoader
 
 try:
+
     from dodflib.core.ner.CNN_biLSTM_CRF import CNN_biLSTM_CRF as M1
-    from dodflib.core.ner.CNN_CNN_BILSTM import CNN_CNN_LSTM as M2
+    from dodflib.core.ner.CNN_CNN_LSTM import CNN_CNN_LSTM as M2
+    from dodflib.core.ner import utils
+    from dodflib.core.ner import metrics
+    from dodflib.core.ner import data3
+
 except:
     from CNN_biLSTM_CRF import CNN_biLSTM_CRF as M1
     from CNN_CNN_LSTM import CNN_CNN_LSTM as M2
@@ -70,6 +71,110 @@ def parse_ner_args():
     return args
 
 
+class CNN_biLSTM_CRF(BaseEstimator, TransformerMixin):
+
+    def __init__(self, char_embedding_dim,  char_out_channels, embedding_path, lstm_hidden_size,
+                 train_path, test_path, augment_pretrained_embedding=False, dataset_format='iob2',
+                    **kwargs):
+        
+        self.train_path = train_path
+        self.test_path = test_path
+        self.dataset_format = dataset_format
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.lstm_hidden_size = lstm_hidden_size
+        self.emb = utils.load_embedding(train_path, test_path, path2str(embedding_path))
+        # if augment_pretrained_embedding:
+        #     utils.augment_pretrained_embedding(self.emb, self.train_path)
+        
+        bias = math.sqrt(3/self.emb.vector_size)
+        if '<START>' not in self.emb:
+            self.emb['<START>'] = np.random.uniform(-bias, bias, self.emb.vector_size)
+        if '<END>' not in self.emb:
+            self.emb['<END>'] = np.random.uniform(-bias, bias, self.emb.vector_size)
+        if '<UNK>' not in self.emb:
+            self.emb['<UNK>'] = np.random.uniform(-bias, bias, self.emb.vector_size)
+        if '<PAD>' not in self.emb:
+            self.emb['<PAD>'] = np.zeros(self.emb.vector_size)
+
+        self.collate_object = utils.new_custom_collate_fn(
+            pad_idx=self.emb.key_to_index['<PAD>'], unk_idx=self.emb.key_to_index['<UNK>']
+        )
+        self.word2idx = utils.create_word2idx_dict(self.emb, self.train_path)
+        self.char2idx = utils.create_char2idx_dict(train_path=self.train_path)
+        self.tag2idx  = utils.create_tag2idx_dict(train_path=self.train_path)
+
+        self.model = M1(
+            char_embedding_dim=char_embedding_dim,
+            char_out_channels=char_out_channels,
+            pretrained_word_emb=self.emb,
+            char_vocab_size=len(self.char2idx),
+            num_classes=len(self.tag2idx),
+            device=self.device,
+
+            lstm_hidden_size = lstm_hidden_size,
+        )
+        self.model = self.model.to(self.device)
+
+
+    def fit(self, test_path, test_format, batch_size, lr, clipping_value, momentum, epochs, **kwargs):
+
+        optim = torch.optim.SGD(self.model.parameters(), lr=lr, momentum=momentum)
+
+        train_set = data3.active_dataset(
+            data=self.train_path, word2idx_dic=self.word2idx, char2idx_dic=self.char2idx, 
+            tag2idx_dic=self.tag2idx, data_format=self.dataset_format)
+        train_dataloader = DataLoader(
+            train_set, batch_size=batch_size, pin_memory=True, 
+            collate_fn = self.collate_object, shuffle=False)
+
+        test_set  = data3.active_dataset(
+            data=self.test_path, word2idx_dic=self.word2idx, char2idx_dic=self.char2idx, 
+            tag2idx_dic=self.tag2idx, data_format=self.dataset_format)
+        test_dataloader = DataLoader(
+            test_set, batch_size=batch_size, shuffle=False, collate_fn=self.collate_object)
+
+        f1_history = []
+        for epoch in range(epochs):
+            print("Epoch:", epoch)
+            self.model.train()
+            for sent, tag, word, mask in train_dataloader:
+                sent = sent.to(self.device)
+                tag = tag.to(self.device)
+                word = word.to(self.device)
+                mask = mask.to(self.device)
+                optim.zero_grad()
+                loss = self.model(sent, word, tag, mask)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), clipping_value)
+                optim.step()
+            
+            self.model.eval()
+            with torch.no_grad():
+                predictions, targets = metrics.preprocess_pred_targ(
+                    self.model, test_dataloader, self.device)
+                predictions = metrics.IOBES_tags(predictions, self.tag2idx)
+                targets = metrics.IOBES_tags(targets, self.tag2idx)
+                micro_f1 = f1_score(targets, predictions, mode='strict', scheme=IOBES)
+                f1_history.append(0 if np.isnan(micro_f1) else micro_f1)
+                print(f'micro f1-score: {micro_f1}\n')
+
+
+    def predict(self, test_path: str, batch_size: int):
+        test_set  = data3.active_dataset(
+            data=test_path, word2idx_dic=self.word2idx, char2idx_dic=self.char2idx, 
+            tag2idx_dic=self.tag2idx, data_format=self.dataset_format)
+        test_dataloader = DataLoader(
+            test_set, batch_size=batch_size, shuffle=False, collate_fn=self.collate_object)
+
+        with torch.no_grad():
+            predictions, targets = metrics.preprocess_pred_targ(
+                self.model, test_dataloader, self.device)
+            predictions = metrics.IOBES_tags(predictions, self.tag2idx)
+            targets = metrics.IOBES_tags(targets, self.tag2idx)
+        return predictions
+
+
 class CNN_CNN_LSTM(BaseEstimator, TransformerMixin):
     # def __init__(self, char_vocab_size, char_embedding_dim, char_out_channels, 
     #     pretrained_word_emb, word2idx, word_out_channels, word_conv_layers, 
@@ -85,9 +190,6 @@ class CNN_CNN_LSTM(BaseEstimator, TransformerMixin):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # self.emb = KeyedVectors.load(embedding_path)
-        print("JJJ!", train_path, ',', embedding_path, '|')
-        # self.emb = utils.load_embedding_broked(train_path, embedding_path)
         self.emb = utils.load_embedding(train_path, test_path, path2str(embedding_path))
         # if augment_pretrained_embedding:
         #     utils.augment_pretrained_embedding(self.emb, self.train_path)
@@ -170,6 +272,16 @@ class CNN_CNN_LSTM(BaseEstimator, TransformerMixin):
                 print(f'micro f1-score: {micro_f1}\n')
 
         
-    def transform(self, text: str):
-        return self.model(text)
+    def predict(self, test_path: str, batch_size: int):
+        test_set  = data3.active_dataset(
+            data=test_path, word2idx_dic=self.word2idx, char2idx_dic=self.char2idx, 
+            tag2idx_dic=self.tag2idx, data_format=self.dataset_format)
+        test_dataloader = DataLoader(
+            test_set, batch_size=batch_size, shuffle=False, collate_fn=self.collate_object)
 
+        with torch.no_grad():
+            predictions, targets = metrics.preprocess_pred_targ(
+                self.model, test_dataloader, self.device)
+            predictions = metrics.IOBES_tags(predictions, self.tag2idx)
+            targets = metrics.IOBES_tags(targets, self.tag2idx)
+        return predictions
